@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Meeting Minutes Companion</title>
+    <link rel="stylesheet" href="sidepanel.css">
+  </head>
+  <body>
+    <main class="app">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">LIVE MEETING</p>
+          <h1>Meeting Minutes</h1>
+        </div>
+        <span id="statusBadge" class="status-badge idle">Ready</span>
+      </header>
+
+      <section class="card">
+        <div class="field-grid">
+          <label>
+            Meeting title
+            <input id="meetingTitle" type="text" placeholder="e.g. Sprint planning">
+          </label>
+          <label>
+            Participants
+            <input id="participants" type="text" placeholder="Names separated by commas">
+          </label>
+        </div>
+        <div class="controls">
+          <button id="startButton" class="primary">Start meeting</button>
+          <button id="stopButton" class="danger" disabled>Stop</button>
+        </div>
+        <p id="recordingNotice" class="hint">Microphone access is required. Keep this panel open while recording.</p>
+      </section>
+
+      <section class="card transcript-card">
+        <div class="section-heading">
+          <div>
+            <h2>Timestamped transcript</h2>
+            <p id="transcriptCount">0 entries</p>
+          </div>
+          <button id="clearButton" class="text-button">Clear</button>
+        </div>
+        <div id="transcript" class="transcript empty-state">
+          <p>Start a meeting to capture transcript entries.</p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Meeting data</h2>
+        <p class="section-description">Export the structured payload that will be sent to the minutes and action-item service.</p>
+        <div class="button-row">
+          <button id="exportJsonButton" class="secondary">Export JSON</button>
+          <button id="exportAudioButton" class="secondary" disabled>Export audio</button>
+        </div>
+        <button id="processButton" class="primary full-width">Send for processing</button>
+        <p id="processStatus" class="hint" role="status"></p>
+      </section>
+
+      <footer>
+        <a href="options.html" target="_blank">Processing settings</a>
+        <span>Meeting Minutes Companion v0.1</span>
+      </footer>
+    </main>
+    <script src="sidepanel.js"></script>
+  </body>
+</html>

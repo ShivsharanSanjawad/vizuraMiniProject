@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Meeting Minutes Companion",
+  "version": "0.1.0",
+  "description": "Capture a live meeting transcript with timestamps and export it for meeting-minutes processing.",
+  "permissions": [
+    "storage",
+    "downloads",
+    "sidePanel"
+  ],
+  "host_permissions": [
+    "http://localhost/*",
+    "https://localhost/*",
+    "http://127.0.0.1/*",
+    "https://127.0.0.1/*"
+  ],
+  "action": {
+    "default_title": "Meeting Minutes Companion"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html"
+}

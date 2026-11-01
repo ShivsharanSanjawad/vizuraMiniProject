@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Meeting Minutes Settings</title>
+    <style>
+      body { color: #172033; font: 15px system-ui, sans-serif; margin: 40px; max-width: 650px; }
+      label { display: grid; font-weight: 700; gap: 8px; }
+      input { border: 1px solid #ccd3e0; border-radius: 6px; font: inherit; padding: 10px; }
+      button { background: #5568d9; border: 0; border-radius: 6px; color: white; cursor: pointer; margin-top: 14px; padding: 10px 14px; }
+      p { color: #657187; line-height: 1.5; }
+      #status { color: #2e7d32; }
+    </style>
+  </head>
+  <body>
+    <h1>Processing settings</h1>
+    <p>Use a local backend endpoint that accepts the JSON meeting payload. The extension sends only the title, participants, timestamped transcript, and requested output fields.</p>
+    <label for="endpoint">Processing endpoint</label>
+    <input id="endpoint" type="url" placeholder="http://localhost:8000/api/meetings/process">
+    <button id="save">Save settings</button>
+    <p id="status" role="status"></p>
+    <script src="options.js"></script>
+  </body>
+</html>
