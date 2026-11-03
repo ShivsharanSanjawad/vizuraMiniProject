@@ -78,7 +78,7 @@ Verify backend health at: [http://127.0.0.1:8000/health](http://127.0.0.1:8000/h
 5. Enter a title and participants, click **Start meeting**, and speak into your microphone.
 6. Click **Process with Backend** to extract tasks and analyze the dependency graph!
 
----
+----
 
 ## API Endpoints
 
