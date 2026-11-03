@@ -1,49 +1,53 @@
-# Meeting Minutes Companion
+# Meeting Minutes Companion (Chrome Extension)
 
-This folder contains the browser extension for the live-meeting portion of the project **Meeting Minutes and Action-Item Generator Using Large Language Models**.
+This folder contains the browser extension for **Meeting Minutes & Task Intelligence**.
 
-## Current scope
+## Capabilities
 
-- Chrome/Edge Manifest V3 side panel.
-- Meeting title and participant metadata.
-- Microphone recording to a local WebM file.
-- Timestamped browser speech-recognition transcript.
-- JSON export containing the payload expected by the future minutes/action-item backend.
-- Configurable localhost processing endpoint for end-to-end testing.
+- Chrome / Edge Manifest V3 side panel.
+- Real-time speech recognition with timestamped transcript logging.
+- Microphone audio recording exportable to WebM.
+- One-click processing with the local FastAPI backend.
+- Direct visualization of:
+  - Extracted tasks with Priority, Assignee, and Deadline.
+  - Schedule feasibility checks (detects circular dependencies).
+  - Schedule bottlenecks and external blockers flagged by the graph engine.
+- Configurable backend endpoint with built-in connection testing.
 
-The extension does not call an LLM directly. Keeping LLM credentials in a browser extension would expose them to every user. The extension sends the structured payload to a local/backend service, where transcription, LLM calls, MLflow/Langfuse monitoring, Sentry, and validation can be implemented safely.
-
-## Install for development
+## Install for Development
 
 1. Open `chrome://extensions` or `edge://extensions`.
 2. Enable **Developer mode**.
-3. Choose **Load unpacked** and select this folder.
-4. Open the extension side panel from the browser toolbar.
-5. Grant microphone permission, enter meeting metadata, and select **Start meeting**.
+3. Choose **Load unpacked** and select this `Extension` folder.
+4. Click the extension action in the toolbar to open the side panel.
+5. Click **Start meeting** to capture live speech.
+6. When finished, click **Process with Backend** to analyze tasks.
 
-The Web Speech API is used for the initial transcript prototype. The recorded WebM audio can be exported for a server-side speech-to-text pipeline later. Select **Export JSON** to inspect the exact data contract.
+## Settings & Backend Contract
 
-## Payload shape
+The extension defaults to `http://127.0.0.1:8000/api/meetings/process`. You can change this in **Processing settings** (`options.html`) and test the connection at any time.
+
+The payload sent to the backend follows this structure:
 
 ```json
 {
   "meeting": {
     "title": "Sprint planning",
-    "participants": ["Asha", "Ravi"],
-    "startedAt": "2026-11-01T00:00:00.000Z",
-    "endedAt": "2026-11-01T00:30:00.000Z"
+    "participants": ["Alice", "Bob"],
+    "startedAt": "2026-11-02T16:00:00.000Z",
+    "endedAt": "2026-11-02T16:30:00.000Z"
   },
   "transcript": [
     {
-      "timestamp": "04:12",
-      "text": "The API integration is due Friday.",
+      "timestamp": "00:05",
+      "text": "Bob, please fix the database migration by Friday.",
       "source": "browser-speech-recognition"
     }
   ],
   "processing": {
     "requestedOutputs": ["summary", "topics", "decisions", "action_items", "unresolved_issues"],
     "source": "meeting-minutes-companion",
-    "version": "0.1.0"
+    "version": "1.0.0"
   }
 }
 ```

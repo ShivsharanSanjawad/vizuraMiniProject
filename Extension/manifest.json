@@ -1,18 +1,23 @@
 {
   "manifest_version": 3,
   "name": "Meeting Minutes Companion",
-  "version": "0.1.0",
-  "description": "Capture a live meeting transcript with timestamps and export it for meeting-minutes processing.",
+  "version": "1.0.1",
+  "description": "Capture live meeting transcripts from all participants, extract action items, infer dependencies, and detect schedule bottlenecks.",
   "permissions": [
     "storage",
     "downloads",
-    "sidePanel"
+    "sidePanel",
+    "tabCapture",
+    "scripting",
+    "tabs",
+    "alarms"
   ],
   "host_permissions": [
     "http://localhost/*",
     "https://localhost/*",
     "http://127.0.0.1/*",
-    "https://127.0.0.1/*"
+    "https://127.0.0.1/*",
+    "https://meet.google.com/*"
   ],
   "action": {
     "default_title": "Meeting Minutes Companion"
@@ -24,5 +29,13 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["https://meet.google.com/*"],
+      "js": ["meet-captions.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
   "options_page": "options.html"
 }

@@ -5,21 +5,36 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Meeting Minutes Settings</title>
     <style>
-      body { color: #172033; font: 15px system-ui, sans-serif; margin: 40px; max-width: 650px; }
-      label { display: grid; font-weight: 700; gap: 8px; }
+      body { color: #172033; font: 15px system-ui, sans-serif; margin: 40px auto; max-width: 650px; line-height: 1.5; }
+      h1 { font-size: 22px; margin-bottom: 8px; }
+      label { display: grid; font-weight: 700; gap: 8px; margin-top: 18px; }
       input { border: 1px solid #ccd3e0; border-radius: 6px; font: inherit; padding: 10px; }
-      button { background: #5568d9; border: 0; border-radius: 6px; color: white; cursor: pointer; margin-top: 14px; padding: 10px 14px; }
-      p { color: #657187; line-height: 1.5; }
-      #status { color: #2e7d32; }
+      input:focus { border-color: #5568d9; outline: 2px solid #5568d933; }
+      .btn-row { display: flex; gap: 10px; margin-top: 16px; }
+      button { background: #5568d9; border: 0; border-radius: 6px; color: white; cursor: pointer; font: inherit; font-size: 14px; font-weight: 600; padding: 10px 16px; }
+      button.secondary { background: #eef1f7; color: #273653; }
+      button:hover { opacity: 0.9; }
+      p { color: #657187; }
+      #status { margin-top: 14px; font-weight: 600; font-size: 14px; }
+      .success { color: #15803d; }
+      .error { color: #b91c1c; }
     </style>
   </head>
   <body>
-    <h1>Processing settings</h1>
-    <p>Use a local backend endpoint that accepts the JSON meeting payload. The extension sends only the title, participants, timestamped transcript, and requested output fields.</p>
-    <label for="endpoint">Processing endpoint</label>
-    <input id="endpoint" type="url" placeholder="http://localhost:8000/api/meetings/process">
-    <button id="save">Save settings</button>
+    <h1>Backend Processing Settings</h1>
+    <p>Configure the task-intelligence backend endpoint that receives the live meeting transcript, extracts factual action items, enriches them with context, and validates task dependency graphs.</p>
+    
+    <label for="endpoint">Processing endpoint URL</label>
+    <input id="endpoint" type="url" placeholder="http://127.0.0.1:8000/api/meetings/process">
+    
+    <div class="btn-row">
+      <button id="save">Save settings</button>
+      <button id="test" class="secondary">Test connection</button>
+    </div>
+    
     <p id="status" role="status"></p>
+    
+    <script src="config.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

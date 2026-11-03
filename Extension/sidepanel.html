@@ -16,53 +16,118 @@
         <span id="statusBadge" class="status-badge idle">Ready</span>
       </header>
 
-      <section class="card">
-        <div class="field-grid">
-          <label>
-            Meeting title
-            <input id="meetingTitle" type="text" placeholder="e.g. Sprint planning">
-          </label>
-          <label>
-            Participants
-            <input id="participants" type="text" placeholder="Names separated by commas">
-          </label>
+      <!-- Capture Mode Banner -->
+      <div id="captureBanner" class="capture-banner banner-idle">
+        <div id="captureBannerIcon">🎙</div>
+        <div class="capture-banner-body">
+          <strong id="captureBannerTitle">Select a capture mode below</strong>
+          <p id="captureBannerDesc">Google Meet captions give the best results with speaker names.</p>
         </div>
-        <div class="controls">
-          <button id="startButton" class="primary">Start meeting</button>
+      </div>
+
+      <!-- Capture Mode Selector -->
+      <section class="card mode-card">
+        <h2>Capture mode</h2>
+        <div class="mode-buttons">
+          <button id="modeGoogleMeet" class="mode-btn" title="Reads Google Meet live captions — all participants with names">
+            <span class="mode-icon">📹</span>
+            <span class="mode-label">Google Meet<br><small>Captions (all speakers)</small></span>
+          </button>
+          <button id="modeTabAudio" class="mode-btn" title="Captures all audio playing in the active browser tab">
+            <span class="mode-icon">🔊</span>
+            <span class="mode-label">Tab Audio<br><small>All voices, no names</small></span>
+          </button>
+          <button id="modeMic" class="mode-btn" title="Captures only your microphone">
+            <span class="mode-icon">🎤</span>
+            <span class="mode-label">Microphone<br><small>Your voice only</small></span>
+          </button>
+        </div>
+
+        <!-- Google Meet captions notice (shown only in Meet mode) -->
+        <div id="meetCaptionNotice" class="hint" style="display:none; margin-top: 8px;">
+          Enable captions in Google Meet:&nbsp;
+          <strong>⋮ menu → Turn on captions</strong>&nbsp;or press <kbd>Ctrl+Shift+C</kbd>
+        </div>
+
+        <div class="controls" style="margin-top: 12px;">
+          <button id="startButton" class="primary" disabled>Start recording</button>
           <button id="stopButton" class="danger" disabled>Stop</button>
         </div>
-        <p id="recordingNotice" class="hint">Microphone access is required. Keep this panel open while recording.</p>
+        <p id="recordingNotice" class="hint">Choose a capture mode to begin.</p>
       </section>
 
+      <!-- Metadata -->
+      <section class="card">
+        <div class="field-grid">
+          <label>Meeting title
+            <input id="meetingTitle" type="text" placeholder="e.g. Sprint planning">
+          </label>
+          <label>Participants (comma-separated)
+            <input id="participants" type="text" placeholder="Alice, Bob, Charlie">
+          </label>
+        </div>
+      </section>
+
+      <!-- Transcript -->
       <section class="card transcript-card">
         <div class="section-heading">
           <div>
             <h2>Timestamped transcript</h2>
             <p id="transcriptCount">0 entries</p>
           </div>
-          <button id="clearButton" class="text-button">Clear</button>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <button id="manualEntryToggle" class="text-button">+ Add Text</button>
+            <button id="sampleButton" class="text-button">Load Demo</button>
+            <button id="clearButton" class="text-button">Clear</button>
+          </div>
         </div>
+
+        <div id="manualInputBox" style="display: none; margin-bottom: 10px;">
+          <textarea id="manualText" rows="2"
+            placeholder="e.g. Alice: Fix the login page by Friday"
+            style="width:100%;border:1px solid #ccd3e0;border-radius:6px;padding:8px;font-family:inherit;font-size:12px;resize:vertical;"></textarea>
+          <button id="addManualBtn" class="primary" style="padding:6px 12px;font-size:11px;margin-top:4px;">Add to Transcript</button>
+        </div>
+
         <div id="transcript" class="transcript empty-state">
-          <p>Start a meeting to capture transcript entries.</p>
+          <p>Start a capture mode or add text to see the transcript here.</p>
         </div>
       </section>
 
+      <!-- Processing -->
       <section class="card">
-        <h2>Meeting data</h2>
-        <p class="section-description">Export the structured payload that will be sent to the minutes and action-item service.</p>
+        <h2>Meeting Actions &amp; Processing</h2>
+        <p class="section-description">
+          Send transcript to the backend: extracts action items with owners &amp; deadlines,
+          infers dependencies, and validates the schedule graph.
+        </p>
         <div class="button-row">
           <button id="exportJsonButton" class="secondary">Export JSON</button>
           <button id="exportAudioButton" class="secondary" disabled>Export audio</button>
         </div>
-        <button id="processButton" class="primary full-width">Send for processing</button>
+        <button id="processButton" class="primary full-width">Process with Backend</button>
         <p id="processStatus" class="hint" role="status"></p>
+      </section>
+
+      <!-- AI Results -->
+      <section id="resultsSection" class="card" style="display: none;">
+        <div class="section-heading">
+          <div>
+            <h2>AI Tasks &amp; Graph Analysis</h2>
+            <p id="resultsSummary" class="hint"></p>
+          </div>
+          <button id="clearResultsButton" class="text-button">Dismiss</button>
+        </div>
+        <div id="graphCard" class="graph-card"></div>
+        <div id="tasksList" class="tasks-list"></div>
       </section>
 
       <footer>
         <a href="options.html" target="_blank">Processing settings</a>
-        <span>Meeting Minutes Companion v0.1</span>
+        <span>Meeting Minutes Companion v1.0</span>
       </footer>
     </main>
+    <script src="config.js"></script>
     <script src="sidepanel.js"></script>
   </body>
 </html>

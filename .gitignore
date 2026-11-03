@@ -1,20 +1,106 @@
+# ==============================================================================
 # Environment variables and secrets
+# ==============================================================================
 .env
 .env.*
+*.env
 !.env.example
+!**/.env.example
 !.env.template
+!**/.env.template
 
-# Python virtual environments
-venv/
+# ==============================================================================
+# Python Virtual Environments
+# ==============================================================================
 .venv/
+venv/
 env/
+ENV/
+env.bak/
+venv.bak/
 
-# Python-generated files
+# ==============================================================================
+# Python Bytecode & Cache
+# ==============================================================================
 __pycache__/
+**/*/__pycache__/
 *.py[cod]
 *$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Test and tooling caches
+# ==============================================================================
+# Testing & Tooling Caches
+# ==============================================================================
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+.nox/
+.tox/
+
+# ==============================================================================
+# Backend Runtime Storage, Logs & Local DBs
+# ==============================================================================
+task-backend/storage/
+storage/
+*.sqlite
+*.sqlite3
+*.db
+mock_requests.jsonl
+*.log
+logs/
+
+# ==============================================================================
+# Extension Archives & Build Artifacts
+# ==============================================================================
+*.zip
+Extension.zip
+
+# ==============================================================================
+# Exported User Audio & Meeting Data
+# ==============================================================================
+*.webm
+*.wav
+*.mp3
+*.m4a
+meeting-data*.json
+meeting-recording*.webm
+
+# ==============================================================================
+# Operating System & Editor Files
+# ==============================================================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
