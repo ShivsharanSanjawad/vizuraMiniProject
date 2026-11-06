@@ -1,0 +1,8 @@
+minutes_data/
+.minutes_venv/
+.minutes_test_tmp*/
+__pycache__/
+.pytest_cache/
+
+.env.local
+.env

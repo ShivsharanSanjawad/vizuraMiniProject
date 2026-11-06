@@ -1,0 +1,82 @@
+{
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/"
+    },
+    {
+      "method": "GET",
+      "path": "/health"
+    },
+    {
+      "method": "POST",
+      "path": "/api/meetings/process"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/extract-factual"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/infer-context/{meeting_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/meetings"
+    },
+    {
+      "method": "GET",
+      "path": "/api/meetings/{meeting_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/minutes/health"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/minutes/monitoring/stats"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/minutes/generate"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/minutes/generate/{meeting_id}"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/minutes"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/minutes/{meeting_id}/history"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/minutes/{meeting_id}"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/v1/minutes/{meeting_id}"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/minutes/{meeting_id}/approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/minutes/{meeting_id}/regenerate"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/minutes/{meeting_id}/export/pdf"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/minutes/{meeting_id}/export/docx"
+    }
+  ],
+  "previous_test_result": "38 passed in previous implementation session; not rerun for this code-only request",
+  "verification": "No servers, package installation, builds, or test suites executed in this implementation turn."
+}
