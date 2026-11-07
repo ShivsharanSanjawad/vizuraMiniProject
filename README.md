@@ -1,6 +1,6 @@
 # Meeting Minutes & Task Intelligence System
 
-An end-to-end meeting intelligence system that captures live transcripts through a Chrome Extension or accepts uploaded and pasted transcripts through a React website. It extracts factual action items, infers contextual task details, analyzes dependencies and blockers, generates evidence-linked meeting minutes, and supports human review, approval, revision history, PDF/DOCX export, meeting Q&A, and LLM monitoring.
+An end-to-end meeting intelligence system that captures live transcripts through a Chrome Extension or accepts uploaded and pasted transcripts through a React website. It extracts factual action items, infers contextual task details, analyzes dependencies and blockers, generates evidence-linked meeting minutes, and supports human review, approval, revision history, PDF/Excel/DOCX export, meeting Q&A, and LLM monitoring.
 
 ---
 
@@ -17,7 +17,7 @@ graph LR
     Backend -->|Local dependency analysis| Graph[NetworkX Graph Engine]
     Minutes -->|Source-reference validation| Verification[Local Evidence Checks]
     Backend -->|Meetings, revisions and monitoring| DB[(MongoDB Atlas)]
-    Minutes -->|Reviewed minutes| Export[PDF / DOCX Export]
+    Minutes -->|Reviewed minutes| Export[PDF / Excel / DOCX Export]
     Backend -->|Tasks, dependency feasibility and bottlenecks| Extension
     Backend -->|Minutes, tasks, graphs, Q&A and monitoring| Web
 ```
@@ -25,11 +25,12 @@ graph LR
 1. **Frontend (Web Application)**:
    - React, TypeScript and Vite application in `frontend/`.
    - Five main pages: Dashboard, Meetings, Action Items, Meeting Assistant and Monitoring.
+   - Meetings default to newest first by actual meeting date/time; missing or invalid dates appear afterward without affecting search or filters.
    - Accepts pasted transcripts and `.txt` or `.json` uploads. Backend audio-file transcription is not implemented.
    - Processes tasks first, then generates minutes using the returned stored meeting ID. Saved results remain available if a later stage fails.
    - Provides meeting-detail tabs for overview, minutes, tasks, dependencies and transcript evidence.
-   - Supports draft editing, approval, regeneration, revision history, PDF/DOCX downloads, persistent task-status updates and confirmed permanent meeting deletion.
-   - The assistant answers questions about one selected meeting using retrieved transcript excerpts; cross-meeting search is not implemented.
+   - Supports draft editing, approval, regeneration, revision history, PDF/Excel/DOCX downloads, persistent task-status updates and confirmed permanent meeting deletion.
+   - The assistant answers basic questions from the selected meeting's saved minutes, decisions and tasks without LLM calls; less direct questions use grounded retrieval. Cross-meeting search is not implemented.
 
 2. **Frontend (Browser Extension)**:
    - Manifest V3 Side Panel extension in `Extension/`.
@@ -44,7 +45,7 @@ graph LR
    - **Pass 2 (`/api/v1/infer-context/{meeting_id}`)**: Enriches tasks with contextual owners, deadlines, priorities, statuses and dependencies while retaining separate factual records.
    - **Graph Engine (`graph_engine.py`)**: Builds a directed dependency graph, detects cycles and external blockers, and ranks bottlenecks by outgoing dependencies. Its feasibility flag checks dependency cycles; it is not a complete deadline or resource scheduler.
    - **Minutes Pipeline (`minutes_module/`)**: Normalizes transcripts, preserves available source IDs, speaker labels and timestamps, summarizes bounded chunks, consolidates long meetings, and validates source references locally. Optional compact LLM review flags uncertain or unsupported claims for human review.
-   - **Review and Export**: Preserves draft/approved revisions. Explicit regeneration creates a new draft without replacing previous approvals. Exports default to the latest approved revision; draft export requires an explicit option.
+   - **Review and Export**: Preserves draft/approved revisions. Explicit regeneration creates a new draft without replacing previous approvals. Exports default to the latest approved revision; draft export requires an explicit option. PDF reports are concise and include saved action items; Excel workbooks separate meeting details, minutes/decisions and action items. DOCX retains detailed evidence.
    - **LLM Integration**: Uses the OpenAI-compatible SDK for Gemini, Groq or OpenAI, with configurable RPM/TPM scheduling, bounded concurrency, classified retries, validated-output caching and duplicate-generation suppression. Scheduling and in-flight coordination are process-local; use one backend worker for this setup.
    - **Monitoring**: Persists generation timings, calls, retries, verification results and available token usage. Estimates are distinguished from provider-reported values; API cost remains unknown unless pricing and sufficient usage information are available.
    - **Storage (`database.py`)**: Requires MongoDB Atlas. Meetings/tasks, minutes revisions and monitoring use separate collections linked by meeting ID. There is no automatic local JSON fallback. Confirmed meeting deletion removes associated saved minutes and monitoring records in a database transaction.
@@ -141,7 +142,7 @@ Open [http://localhost:5173](http://localhost:5173). No frontend env file is req
 1. Choose **New meeting**, enter metadata and paste or upload a transcript. `task-backend/minutes_sample_request.json` provides a sample payload.
 2. Submit once: the frontend calls meeting processing, obtains the stored meeting ID, then calls minutes generation for that ID.
 3. Inspect the meeting tabs, edit draft minutes, review evidence/flags, enter a reviewer name and approve. Reviewer names are audit labels, not authenticated identities.
-4. Download PDF/DOCX, update task statuses, inspect dependencies and ask the assistant about the selected meeting.
+4. Download PDF/Excel/DOCX, update task statuses, inspect dependencies and ask the assistant about the selected meeting.
 5. If enrichment or minutes generation fails, open the saved meeting and retry that stage instead of submitting another copy.
 6. Use **Delete** in the Meetings list only when you want to permanently remove the meeting and its associated saved records, including approved minutes. Download needed reports first and avoid deletion while generation is running.
 
@@ -188,7 +189,7 @@ All paths below are exposed by `combined_app:app`. Meeting and minutes list endp
 | `GET` | `/api/meetings/{meeting_id}` | Retrieve meeting metadata, saved transcript, tasks and graph analysis |
 | `DELETE` | `/api/meetings/{meeting_id}` | Permanently delete the meeting, its minutes revisions and associated generation monitoring records |
 | `PATCH` | `/api/meetings/{meeting_id}/tasks/{task_id}/status` | Persist a task status using the expected task revision and refresh graph analysis |
-| `POST` | `/api/meetings/{meeting_id}/query` | Answer a question using retrieved excerpts from one meeting's transcript |
+| `POST` | `/api/meetings/{meeting_id}/query` | Answer a basic question from one meeting's saved minutes/tasks, with grounded LLM retrieval for less direct questions |
 | `GET` | `/api/v1/minutes/health` | Minutes provider/model configuration, env-file presence and database connectivity; does not reveal keys |
 | `GET` | `/api/v1/minutes/monitoring/stats` | Statistics over the latest 1,000 persisted generation jobs and up to 50 recent records |
 | `POST` | `/api/v1/minutes/generate` | Generate minutes from a supplied transcript; does not run the task pipeline or create a task meeting |
@@ -200,6 +201,7 @@ All paths below are exposed by `combined_app:app`. Meeting and minutes list endp
 | `POST` | `/api/v1/minutes/{meeting_id}/approve` | Approve the current draft with reviewer information and acknowledgment of review flags when required |
 | `POST` | `/api/v1/minutes/{meeting_id}/regenerate` | Explicitly generate a new draft while preserving previous edits and approvals |
 | `GET` | `/api/v1/minutes/{meeting_id}/export/pdf` | Download the latest approved PDF; `draft=true` explicitly selects the latest version, including a draft |
+| `GET` | `/api/v1/minutes/{meeting_id}/export/xlsx` | Download a structured Excel workbook; the same approved/draft selection policy applies |
 | `GET` | `/api/v1/minutes/{meeting_id}/export/docx` | Download the latest approved DOCX; `draft=true` explicitly selects the latest version, including a draft |
 | `GET` | `/docs` | Interactive Swagger UI |
 | `GET` | `/redoc` | ReDoc API reference |

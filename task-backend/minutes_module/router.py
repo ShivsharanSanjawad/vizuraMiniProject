@@ -192,9 +192,12 @@ def create_router(runtime):
         if not selected:
             raise HTTPException(404, detail={"code":"no_exportable_revision", "hint":"Approve minutes or explicitly set draft=true"})
         rev = Revision.model_validate(selected[-1])
-        content = await asyncio.to_thread(export, rev, kind)
-        media = "application/pdf" if kind=="pdf" else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        return Response(content, media_type=media, headers={"Content-Disposition":f'attachment; filename="minutes-r{rev.revision}-{rev.status}.{kind}"'})
+        meeting_doc = await runtime.adapter.get(meeting_id) if kind in {"pdf", "xlsx"} else None
+        content = await asyncio.to_thread(export, rev, kind, meeting_doc)
+        media = {"pdf":"application/pdf", "docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document", "xlsx":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}[kind]
+        import re
+        slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", (meeting_doc or {}).get("meeting_title") or rev.minutes.title).strip("-")[:70] or "meeting"
+        return Response(content, media_type=media, headers={"Content-Disposition":f'attachment; filename="minutes-{slug}-r{rev.revision}-{rev.status}.{kind}"'})
 
     @r.get("/{meeting_id}/export/pdf")
     async def pdf(meeting_id: str, draft: bool = False):
@@ -203,5 +206,9 @@ def create_router(runtime):
     @r.get("/{meeting_id}/export/docx")
     async def docx(meeting_id: str, draft: bool = False):
         return await download(meeting_id, "docx", draft)
+
+    @r.get("/{meeting_id}/export/xlsx")
+    async def xlsx(meeting_id: str, draft: bool = False):
+        return await download(meeting_id, "xlsx", draft)
 
     return r

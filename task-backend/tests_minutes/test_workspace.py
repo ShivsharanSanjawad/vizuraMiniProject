@@ -55,7 +55,7 @@ def test_query_drops_fake_evidence(workspace):
     async def hallucinate(*args,**kwargs):
         return Answer(claims=[Claim(text="Invented",evidence=[Evidence(segment_id="fake",excerpt="Fake")])])
     runtime.llm.generate=hallucinate
-    response=client.post(f"/api/meetings/{meeting_id}/query",json={"question":"What decisions?"})
+    response=client.post(f"/api/meetings/{meeting_id}/query",json={"question":"How does release relate to launch quality?"})
     assert response.json()["claims"]==[]
     assert response.json()["insufficient_evidence"] is True
 
@@ -103,3 +103,67 @@ def test_monitoring_survives_runtime_restart(workspace):
     stats=asyncio.run(Monitor().stats())
     assert stats["requests"]==1
     assert stats["succeeded"]==1
+
+
+
+def seed_minutes(meeting_id,summary="Release planning summary",decision="Use the approved API design",issue="The deployment date is unresolved"):
+    from minutes_module.schemas import Minutes,Revision,Meeting
+    from minutes_module.storage import Store
+    minutes=Minutes(executive_summary=Claim(text=summary),decisions=[Claim(text=decision)],unresolved_issues=[Claim(text=issue)])
+    revision=Revision(meeting_id=meeting_id,revision=1,status="approved",created_at="2026-11-06T10:00:00+05:30",approved_at="2026-11-06T10:00:00+05:30",reviewer="Reviewer",
+        minutes=minutes,meeting=Meeting(id=meeting_id,title="Release"),segments=[],verification={"requires_human_review":False,"flags":[]},generation={})
+    return asyncio.run(Store().append(revision,expected=0))
+
+
+@pytest.mark.parametrize("question,expected",[
+    ("What was this meeting about?","Release planning summary"),
+    ("What were the key decisions?","Use the approved API design"),
+    ("What action items were assigned?","Fix bugs"),
+    ("Who is responsible for Fix bugs?","Priya"),
+    ("What are the deadlines?","not recorded"),
+    ("What issues remain unresolved?","deployment date is unresolved"),
+])
+def test_basic_assistant_uses_saved_data_without_llm(workspace,question,expected):
+    client,meeting_id,runtime=workspace
+    seed_minutes(meeting_id)
+    runtime.llm.generate=AsyncMock(side_effect=AssertionError("Basic queries must not call LLM"))
+    response=client.post(f"/api/meetings/{meeting_id}/query",json={"question":question})
+    assert response.status_code==200,response.text
+    assert expected in " ".join(claim["text"] for claim in response.json()["claims"])
+    assert response.json()["meeting_id"]==meeting_id
+    assert response.json()["cross_meeting"] is False
+    runtime.llm.generate.assert_not_awaited()
+
+
+def test_assistant_never_reads_another_meetings_records(workspace):
+    client,meeting_id,runtime=workspace
+    seed_minutes(meeting_id)
+    other_id=asyncio.run(save_meeting_doc({"meeting_title":"Private other meeting","tasks":[{"task_id":"T1","description":"SECRET_ORBIT task","explicit_owner":"Hidden owner"}]}))
+    seed_minutes(other_id,summary="PRIVATE_OTHER_SUMMARY",decision="PRIVATE_OTHER_DECISION")
+    runtime.llm.generate=AsyncMock(side_effect=AssertionError("No LLM needed"))
+    for question in ("What decisions were made?","What action items were assigned?","Who is responsible for SECRET_ORBIT task?"):
+        response=client.post(f"/api/meetings/{meeting_id}/query",json={"question":question})
+        assert response.status_code==200
+        assert "PRIVATE_OTHER" not in response.text and "Hidden owner" not in response.text and "SECRET_ORBIT" not in response.text
+        assert response.json()["meeting_id"]==meeting_id
+    assert response.json()["insufficient_evidence"] is True
+    runtime.llm.generate.assert_not_awaited()
+
+
+def test_assistant_uses_minutes_without_transcript_and_labels_inferred_owners(workspace):
+    client,_,runtime=workspace
+    meeting_id=asyncio.run(save_meeting_doc({"meeting_title":"Saved record","enriched_tasks":[{"task_id":"T1","description":"Build endpoint","owner":"Priya"}]}))
+    seed_minutes(meeting_id)
+    runtime.llm.generate=AsyncMock(side_effect=AssertionError("No LLM needed"))
+    summary=client.post(f"/api/meetings/{meeting_id}/query",json={"question":"What was this meeting about?"})
+    owner=client.post(f"/api/meetings/{meeting_id}/query",json={"question":"Who owns Build endpoint?"})
+    assert summary.status_code==200
+    assert owner.status_code==200
+    assert "(inferred)" in owner.text
+    assert "not recorded" not in " ".join(c["text"] for c in owner.json()["claims"])
+    runtime.llm.generate.assert_not_awaited()
+
+
+def test_assistant_missing_selected_meeting_returns_404(workspace):
+    client,_,_=workspace
+    assert client.post("/api/meetings/not-a-meeting/query",json={"question":"What decisions?"}).status_code==404

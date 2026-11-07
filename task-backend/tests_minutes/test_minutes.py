@@ -389,3 +389,108 @@ def test_llm_context_preflight():
 
 def awaitable_health(main):
     return asyncio.run(main.database.healthy())
+
+
+
+def prepare_export_record(api):
+    from minutes_module.schemas import Claim
+    client,runtime=api
+    first=generate(client)
+    first["minutes"]["executive_summary"]["text"]="A brief release planning summary."
+    first["minutes"]["decisions"]=[{"text":"Use version 2 for the release.","evidence":[],"assessment":"ambiguous"}]
+    edited=client.put("/api/v1/minutes/meeting-001",json={"expected_revision":1,"minutes":first["minutes"],"reviewer":"Reviewer"})
+    assert edited.status_code==200
+    approved=client.post("/api/v1/minutes/meeting-001/approve",json={"expected_revision":2,"reviewer":"Reviewer","acknowledge_review_flags":True})
+    assert approved.status_code==200
+    doc={"meeting_title":"Release & Planning","date":"2026-11-04T10:30:00+05:30","participants":["Priya","Rahul"],
+        "tasks":[{"task_id":"T1","description":"<Ship> & review feature","explicit_owner":"Priya","explicit_deadline":"2026-11-09"}],
+        "enriched_tasks":[{"task_id":"T1","description":"<Ship> & review feature","owner":"Priya","deadline":"2026-11-09","priority":"High","status":"pending"}],
+        "task_status_overrides":[{"task_id":"T1","status":"blocked"}]}
+    runtime.adapter.get=AsyncMock(return_value=doc)
+    return client,runtime,doc
+
+
+def test_pdf_opens_and_contains_clean_metadata_and_current_tasks(api):
+    from pypdf import PdfReader
+    client,_,_=prepare_export_record(api)
+    response=client.get("/api/v1/minutes/meeting-001/export/pdf")
+    assert response.status_code==200,response.text
+    assert response.headers["content-type"]=="application/pdf"
+    assert response.headers["content-disposition"].endswith('r3-approved.pdf"')
+    pdf=PdfReader(BytesIO(response.content))
+    assert 1<=len(pdf.pages)<=2
+    text=" ".join(page.extract_text() for page in pdf.pages)
+    for expected in ("Release & Planning","04 Nov 2026","10:30","Priya","Rahul","A brief release planning summary.","Use version 2 for the release.","<Ship> & review feature","2026-11-09","High","blocked"):
+        assert expected in text
+    assert "Sources:" not in text and "seg-000001" not in text and "None recorded" not in text
+    assert text.count("A brief release planning summary.")==1
+
+
+def test_excel_opens_with_selected_meeting_and_task_sheets(api):
+    from openpyxl import load_workbook
+    client,_,_=prepare_export_record(api)
+    response=client.get("/api/v1/minutes/meeting-001/export/xlsx")
+    assert response.status_code==200,response.text
+    assert response.headers["content-type"]=="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    assert response.headers["content-disposition"].endswith('r3-approved.xlsx"')
+    workbook=load_workbook(BytesIO(response.content),data_only=False)
+    assert workbook.sheetnames==["Meeting Details","Minutes and Decisions","Action Items"]
+    details=dict(workbook["Meeting Details"].iter_rows(min_row=2,values_only=True))
+    assert details["Title"]=="Release & Planning"
+    assert details["Participants"]=="Priya, Rahul"
+    rows=list(workbook["Action Items"].values)
+    assert rows[0]==("Task","Owner","Deadline","Priority","Status")
+    assert rows[1]==("<Ship> & review feature","Priya","2026-11-09","High","blocked")
+    assert "Use version 2 for the release." in str(list(workbook["Minutes and Decisions"].values))
+    assert workbook["Action Items"].freeze_panes=="A2"
+
+
+def test_excel_draft_policy_and_spreadsheet_formula_safety(api):
+    from openpyxl import load_workbook
+    client,runtime=api
+    generate(client)
+    runtime.adapter.get=AsyncMock(return_value={"meeting_title":'=HYPERLINK("https://example.com")' ,"tasks":[{"task_id":"T1","description":"=2+3"}]})
+    assert client.get("/api/v1/minutes/meeting-001/export/xlsx").status_code==404
+    response=client.get("/api/v1/minutes/meeting-001/export/xlsx?draft=true")
+    assert response.status_code==200
+    workbook=load_workbook(BytesIO(response.content),data_only=False)
+    assert workbook["Meeting Details"]["B2"].data_type=="s"
+    assert workbook["Action Items"]["A2"].value=="=2+3"
+    assert workbook["Action Items"]["A2"].data_type=="s"
+    assert '/' not in response.headers["content-disposition"].split('filename="')[1]
+
+
+def test_empty_exports_open_without_fabricated_tasks(api):
+    from pypdf import PdfReader
+    from openpyxl import load_workbook
+    client,runtime=api
+    generate(client)
+    runtime.adapter.get=AsyncMock(return_value=None)
+    pdf=client.get("/api/v1/minutes/meeting-001/export/pdf?draft=true")
+    assert pdf.status_code==200
+    assert "Action items" not in " ".join(page.extract_text() for page in PdfReader(BytesIO(pdf.content)).pages)
+    xlsx=client.get("/api/v1/minutes/meeting-001/export/xlsx?draft=true")
+    assert load_workbook(BytesIO(xlsx.content))["Action Items"].max_row==1
+    assert client.get("/api/v1/minutes/missing/export/xlsx").status_code==404
+
+
+def test_cors_exposes_download_filename_header():
+    import main
+    response=TestClient(main.app).get("/health",headers={"Origin":"http://localhost:5173"})
+    assert "Content-Disposition" in response.headers.get("access-control-expose-headers","")
+
+
+
+def test_pdf_long_action_rows_wrap_and_repeat_table_headers(api):
+    from pypdf import PdfReader
+    client,runtime,doc=prepare_export_record(api)
+    doc["tasks"]=[{"task_id":f"T{i}","description":f"Task {i}: "+("Review the release checklist and document the result. "*12),"explicit_owner":"Priya"} for i in range(15)]
+    doc["enriched_tasks"]=[]
+    doc["task_status_overrides"]=[]
+    response=client.get("/api/v1/minutes/meeting-001/export/pdf")
+    assert response.status_code==200,response.text
+    pdf=PdfReader(BytesIO(response.content))
+    text=" ".join(page.extract_text() for page in pdf.pages)
+    assert len(pdf.pages)>1
+    assert text.count("Owner")>1
+    assert "Task 0:" in text and "Task 14:" in text

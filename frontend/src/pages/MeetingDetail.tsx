@@ -4,25 +4,716 @@ import { ArrowLeft, Download, RotateCw, Search, Check } from 'lucide-react';
 import { api, ApiError, errorMessage } from '../services/api';
 import { dateLabel, tasksOf } from '../services/data';
 import type { Claim, Minutes, Revision } from '../types';
-import { PageTitle, useLoad, Loading, ErrorNotice, Empty, Badge, Claims } from '../components/ui';
-import TaskTable, {allTasks} from '../components/TaskTable';
+import {
+  PageTitle,
+  useLoad,
+  Loading,
+  ErrorNotice,
+  Empty,
+  Badge,
+  Claims,
+} from '../components/ui';
+import TaskTable, { allTasks } from '../components/TaskTable';
 import DependencyGraph from '../components/DependencyGraph';
-export default function MeetingDetail(){
-  const {meetingId=''}=useParams();const [params,setParams]=useSearchParams();const tab=params.get('tab')||'overview';
-  const data=useLoad(async()=>{const doc=await api.meeting(meetingId);let revision:Revision|undefined;let minutesError='';try{revision=await api.minutes(meetingId);}catch(e){if(!(e instanceof ApiError&&e.status===404))minutesError=errorMessage(e);}return {doc,revision,minutesError};},[meetingId]);
-  const [busy,setBusy]=useState('');const [error,setError]=useState('');const [notice,setNotice]=useState('');const [reviewer,setReviewer]=useState('');const [ack,setAck]=useState(false);const [draftExport,setDraftExport]=useState(false);const [editing,setEditing]=useState(false);const [draft,setDraft]=useState<Minutes>();const [search,setSearch]=useState('');
-  useEffect(()=>{setEditing(false);setDraft(undefined);setError('');setNotice('');setAck(false);},[meetingId]);
-  useEffect(()=>{if(!editing)return;const unload=(e:BeforeUnloadEvent)=>{e.preventDefault();};const click=(e:MouseEvent)=>{if((e.target as HTMLElement).closest('a')&&!window.confirm('Leave without saving these edits?')){e.preventDefault();e.stopPropagation();}};window.addEventListener('beforeunload',unload);document.addEventListener('click',click,true);return()=>{window.removeEventListener('beforeunload',unload);document.removeEventListener('click',click,true);};},[editing]);
-  async function act(label:string,operation:()=>Promise<unknown>,reload=true){setBusy(label);setError('');setNotice('');try{await operation();if(reload){setEditing(false);setAck(false);data.reload();}setNotice(label+' completed.');}catch(e){setError(errorMessage(e));}finally{setBusy('');}}
-  if(data.loading)return <Loading text="Opening meeting record?"/>;
-  if(data.error||!data.value)return <ErrorNotice message={data.error||'Meeting not found.'} retry={data.reload}/>;
-  const {doc,revision:rev,minutesError}=data.value;const content=rev?.minutes;
-  const segments=rev?.segments || (doc.transcript?.length ? doc.transcript.map((e,i)=>({...e,segment_id:'source-'+(i+1)})) : (doc.raw_transcript||'').split('\n').filter(Boolean).map((text,i)=>({text,segment_id:'line-'+(i+1),speaker:null,timestamp:null})));
-  return <><Link className="back-link" to="/meetings"><ArrowLeft size={15}/>Meeting library</Link><PageTitle eyebrow="MEETING RECORD" title={doc.meeting_title||content?.title||'Untitled meeting'} description={`${dateLabel(doc.date)} ? ${doc.participants?.join(', ')||'Participants not recorded'}`} action={<Badge>{doc.status||'unknown'}</Badge>}/>{error&&<ErrorNotice message={error}/>}{notice&&<div className="notice" role="status"><Check size={17}/>{notice}</div>}{minutesError&&<ErrorNotice message={'Minutes could not be loaded: '+minutesError} retry={data.reload}/>}{doc.status!=='completed'&&<div className="notice warning"><span>Task enrichment is incomplete. Saved factual tasks remain available.</span><button disabled={!!busy||editing} onClick={()=>void act('Task inference',()=>api.infer(meetingId))}>Retry task inference</button></div>}<div className="detail-summary"><span><strong>{tasksOf(doc).length}</strong> action items</span><span><strong>{content?.decisions.length??'?'}</strong> decisions</span><span><strong>{rev?`Revision ${rev.revision}`:'Not generated'}</strong> minutes</span>{rev&&<Badge>{rev.status}</Badge>}</div><section className="panel detail-panel"><div className="tabs" role="tablist" aria-label="Meeting sections">{['overview','minutes','tasks','dependencies','transcript'].map(t=><button role="tab" aria-selected={tab===t} className={tab===t?'active':''} key={t} onClick={()=>setParams({tab:t})}>{t==='tasks'?'Action items':t}</button>)}</div>{tab==='overview'&&(content?<div className="document"><Claims title="Executive summary" items={[content.executive_summary]}/><div className="two-column"><Claims title="Key takeaways" items={content.key_takeaways}/><Claims title="Decisions" items={content.decisions}/></div><Claims title="Conclusions" items={content.conclusions}/><Claims title="Unresolved issues" items={content.unresolved_issues}/><Claims title="Follow-up items" items={content.follow_up_items}/></div>:<Empty title="The conversation is ready for a clearer record"><p>Generate grounded minutes from this meeting's saved transcript.</p><button className="primary" disabled={!!busy} onClick={()=>void act('Minutes generation',()=>api.generate(meetingId))}>{busy||'Generate minutes'}</button></Empty>)}{tab==='minutes'&&<div className="document">{rev&&content?<><div className="document-topline"><div><p className="eyebrow">{rev.status.toUpperCase()} ? REVISION {rev.revision}</p><h2>{content.title}</h2><p className="muted">{rev.approved_at?`Approved by ${rev.reviewer} ? ${dateLabel(rev.approved_at)}`:'Draft minutes require human review before approval.'}</p></div><div className="button-group"><button disabled={!!busy||editing} onClick={()=>void act('Regeneration',()=>api.regenerate(meetingId))}><RotateCw size={15}/>Regenerate</button>{rev.status==='draft'&&!editing&&<button onClick={()=>{setDraft(structuredClone(content));setEditing(true);}}>Edit minutes</button>}</div></div>{rev.verification.requires_human_review&&<details className="notice warning review-flags"><summary>{rev.verification.flags.length} factual review flags ? inspect before approval</summary><ul>{rev.verification.flags.map((f,i)=><li key={i}>{f.path}: {f.reason.replaceAll('_',' ')}</li>)}</ul></details>}{editing&&draft?<><MinutesEditor value={draft} onChange={setDraft}/><label>Reviewer name<input value={reviewer} onChange={e=>setReviewer(e.target.value)} maxLength={200}/></label><div className="button-group"><button className="primary" disabled={!!busy||!reviewer.trim()} onClick={()=>void act('Draft save',()=>api.edit(meetingId,rev.revision,draft,reviewer.trim()))}>Save draft as new revision</button><button disabled={!!busy} onClick={()=>{if(window.confirm('Discard these unsaved edits?'))setEditing(false);}}>Cancel edits</button></div></>:<><Claims title="Executive summary" items={[content.executive_summary]}/>{content.topics.map((t,i)=><section className="topic" key={i}><span className="topic-number">{String(i+1).padStart(2,'0')}</span><div><h3>{t.topic}</h3><Claims items={[t.summary]}/><Claims title="Discussion points" items={t.key_points}/><Claims title="Related decisions" items={t.decisions}/><Claims title="Open questions" items={t.unresolved_issues}/></div></section>)}<Claims title="Timestamped highlights" items={content.highlights}/><Claims title="Decisions" items={content.decisions}/><Claims title="Follow-up items" items={content.follow_up_items}/>{rev.status==='draft'&&<div className="review-box"><h3>Review & approve</h3><p>Approval preserves a reviewed snapshot. Source references support your review; they do not prove every claim.</p><label>Reviewer name<input value={reviewer} onChange={e=>setReviewer(e.target.value)} maxLength={200}/></label>{rev.verification.requires_human_review&&<label className="check-label"><input type="checkbox" checked={ack} onChange={e=>setAck(e.target.checked)}/>I reviewed the flagged statements against the source transcript.</label>}<button className="primary" disabled={!!busy||!reviewer.trim()||(rev.verification.requires_human_review&&!ack)} onClick={()=>void act('Approval',()=>api.approve(meetingId,rev.revision,reviewer.trim(),ack))}>Approve minutes</button></div>}</>}<div className="export-bar"><div><h3>A record to take with you</h3><label className="check-label"><input type="checkbox" checked={draftExport} onChange={e=>setDraftExport(e.target.checked)}/>Export latest version, including draft</label><small>Default: latest approved revision, even when a newer draft exists.</small></div><div className="button-group">{(['pdf','docx']as const).map(format=><button key={format} disabled={!!busy||editing} onClick={()=>void act(format.toUpperCase()+' download',()=>api.download(meetingId,format,draftExport),false)}><Download size={15}/>{format.toUpperCase()}</button>)}</div></div><RevisionHistory meetingId={meetingId} version={rev.revision}/></>:<Empty title="No minutes generated yet"><button className="primary" disabled={!!busy} onClick={()=>void act('Minutes generation',()=>api.generate(meetingId))}>{busy||'Generate minutes'}</button></Empty>}</div>}{tab==='tasks'&&<><p className="section-help">Statuses are saved to Atlas. Enriched owners, deadlines and dependencies can be inferred; original factual records remain unchanged.</p><TaskTable tasks={allTasks([doc])} onChanged={data.reload}/><details className="document"><summary>Original factual extraction</summary>{doc.tasks?.map(t=><div className="claim" key={t.task_id}><strong>{t.task_id}: {t.description}</strong><p>Explicit owner: {t.explicit_owner||'Not stated'} ? Explicit deadline: {t.explicit_deadline||'Not stated'}</p><p>Explicit prerequisites: {t.explicit_prerequisites?.join(', ')||'None recorded'}</p></div>)}</details></>}{tab==='dependencies'&&<div className="document"><DependencyGraph graph={doc.graph_analysis} tasks={tasksOf(doc)}/></div>}{tab==='transcript'&&<div className="document"><div className="section-title"><h2>Source transcript</h2><label className="search"><Search size={16}/><input aria-label="Search transcript" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Find in transcript?"/></label></div>{segments.filter(s=>s.text.toLowerCase().includes(search.toLowerCase())).map(s=><article className="transcript-segment" key={s.segment_id}><aside><span>{s.timestamp||'No timestamp'}</span><small>{s.segment_id}</small></aside><div>{s.speaker&&<strong>{s.speaker}</strong>}<p>{s.text}</p></div></article>)}{!segments.length&&<Empty title="No source transcript saved"/>}</div>}</section>{busy&&<div className="operation-status" role="status"><Loading text={busy+' in progress?'}/></div>}</>;
+export default function MeetingDetail() {
+  const { meetingId = '' } = useParams();
+  const [params, setParams] = useSearchParams();
+  const tab = params.get('tab') || 'overview';
+  const data = useLoad(async () => {
+    const doc = await api.meeting(meetingId);
+    let revision: Revision | undefined;
+    let minutesError = '';
+    try {
+      revision = await api.minutes(meetingId);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404))
+        minutesError = errorMessage(e);
+    }
+    return { doc, revision, minutesError };
+  }, [meetingId]);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [reviewer, setReviewer] = useState('');
+  const [ack, setAck] = useState(false);
+  const [draftExport, setDraftExport] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<Minutes>();
+  const [search, setSearch] = useState('');
+  useEffect(() => {
+    setEditing(false);
+    setDraft(undefined);
+    setError('');
+    setNotice('');
+    setAck(false);
+  }, [meetingId]);
+  useEffect(() => {
+    if (!editing) return;
+    const unload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    const click = (e: MouseEvent) => {
+      if (
+        (e.target as HTMLElement).closest('a') &&
+        !window.confirm('Leave without saving these edits?')
+      ) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener('beforeunload', unload);
+    document.addEventListener('click', click, true);
+    return () => {
+      window.removeEventListener('beforeunload', unload);
+      document.removeEventListener('click', click, true);
+    };
+  }, [editing]);
+  async function act(
+    label: string,
+    operation: () => Promise<unknown>,
+    reload = true
+  ) {
+    setBusy(label);
+    setError('');
+    setNotice('');
+    try {
+      await operation();
+      if (reload) {
+        setEditing(false);
+        setAck(false);
+        data.reload();
+      }
+      setNotice(label + ' completed.');
+    } catch (e) {
+      setError(errorMessage(e));
+    } finally {
+      setBusy('');
+    }
+  }
+  if (data.loading) return <Loading text="Opening meeting record?" />;
+  if (data.error || !data.value)
+    return (
+      <ErrorNotice
+        message={data.error || 'Meeting not found.'}
+        retry={data.reload}
+      />
+    );
+  const { doc, revision: rev, minutesError } = data.value;
+  const content = rev?.minutes;
+  const segments =
+    rev?.segments ||
+    (doc.transcript?.length
+      ? doc.transcript.map((e, i) => ({
+          ...e,
+          segment_id: 'source-' + (i + 1),
+        }))
+      : (doc.raw_transcript || '')
+          .split('\n')
+          .filter(Boolean)
+          .map((text, i) => ({
+            text,
+            segment_id: 'line-' + (i + 1),
+            speaker: null,
+            timestamp: null,
+          })));
+  return (
+    <>
+      <Link className="back-link" to="/meetings">
+        <ArrowLeft size={15} />
+        Meeting library
+      </Link>
+      <PageTitle
+        eyebrow="MEETING RECORD"
+        title={doc.meeting_title || content?.title || 'Untitled meeting'}
+        description={`${dateLabel(doc.date)} ? ${doc.participants?.join(', ') || 'Participants not recorded'}`}
+        action={<Badge>{doc.status || 'unknown'}</Badge>}
+      />
+      {error && <ErrorNotice message={error} />}
+      {notice && (
+        <div className="notice" role="status">
+          <Check size={17} />
+          {notice}
+        </div>
+      )}
+      {minutesError && (
+        <ErrorNotice
+          message={'Minutes could not be loaded: ' + minutesError}
+          retry={data.reload}
+        />
+      )}
+      {doc.status !== 'completed' && (
+        <div className="notice warning">
+          <span>
+            Task enrichment is incomplete. Saved factual tasks remain available.
+          </span>
+          <button
+            disabled={!!busy || editing}
+            onClick={() =>
+              void act('Task inference', () => api.infer(meetingId))
+            }
+          >
+            Retry task inference
+          </button>
+        </div>
+      )}
+      <div className="detail-summary">
+        <span>
+          <strong>{tasksOf(doc).length}</strong> action items
+        </span>
+        <span>
+          <strong>{content?.decisions.length ?? '?'}</strong> decisions
+        </span>
+        <span>
+          <strong>{rev ? `Revision ${rev.revision}` : 'Not generated'}</strong>{' '}
+          minutes
+        </span>
+        {rev && <Badge>{rev.status}</Badge>}
+      </div>
+      <section className="panel detail-panel">
+        <div className="tabs" role="tablist" aria-label="Meeting sections">
+          {['overview', 'minutes', 'tasks', 'dependencies', 'transcript'].map(
+            (t) => (
+              <button
+                role="tab"
+                aria-selected={tab === t}
+                className={tab === t ? 'active' : ''}
+                key={t}
+                onClick={() => setParams({ tab: t })}
+              >
+                {t === 'tasks' ? 'Action items' : t}
+              </button>
+            )
+          )}
+        </div>
+        {tab === 'overview' &&
+          (content ? (
+            <div className="document">
+              <Claims
+                title="Executive summary"
+                items={[content.executive_summary]}
+              />
+              <div className="two-column">
+                <Claims title="Key takeaways" items={content.key_takeaways} />
+                <Claims title="Decisions" items={content.decisions} />
+              </div>
+              <Claims title="Conclusions" items={content.conclusions} />
+              <Claims
+                title="Unresolved issues"
+                items={content.unresolved_issues}
+              />
+              <Claims title="Follow-up items" items={content.follow_up_items} />
+            </div>
+          ) : (
+            <Empty title="The conversation is ready for a clearer record">
+              <p>
+                Generate grounded minutes from this meeting's saved transcript.
+              </p>
+              <button
+                className="primary"
+                disabled={!!busy}
+                onClick={() =>
+                  void act('Minutes generation', () => api.generate(meetingId))
+                }
+              >
+                {busy || 'Generate minutes'}
+              </button>
+            </Empty>
+          ))}
+        {tab === 'minutes' && (
+          <div className="document">
+            {rev && content ? (
+              <>
+                <div className="document-topline">
+                  <div>
+                    <p className="eyebrow">
+                      {rev.status.toUpperCase()} ? REVISION {rev.revision}
+                    </p>
+                    <h2>{content.title}</h2>
+                    <p className="muted">
+                      {rev.approved_at
+                        ? `Approved by ${rev.reviewer} ? ${dateLabel(rev.approved_at)}`
+                        : 'Draft minutes require human review before approval.'}
+                    </p>
+                  </div>
+                  <div className="button-group">
+                    <button
+                      disabled={!!busy || editing}
+                      onClick={() =>
+                        void act('Regeneration', () =>
+                          api.regenerate(meetingId)
+                        )
+                      }
+                    >
+                      <RotateCw size={15} />
+                      Regenerate
+                    </button>
+                    {rev.status === 'draft' && !editing && (
+                      <button
+                        onClick={() => {
+                          setDraft(structuredClone(content));
+                          setEditing(true);
+                        }}
+                      >
+                        Edit minutes
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {rev.verification.requires_human_review && (
+                  <details className="notice warning review-flags">
+                    <summary>
+                      {rev.verification.flags.length} factual review flags ?
+                      inspect before approval
+                    </summary>
+                    <ul>
+                      {rev.verification.flags.map((f, i) => (
+                        <li key={i}>
+                          {f.path}: {f.reason.replaceAll('_', ' ')}
+                        </li>
+                      ))}
+                    </ul>
+                  </details>
+                )}
+                {editing && draft ? (
+                  <>
+                    <MinutesEditor value={draft} onChange={setDraft} />
+                    <label>
+                      Reviewer name
+                      <input
+                        value={reviewer}
+                        onChange={(e) => setReviewer(e.target.value)}
+                        maxLength={200}
+                      />
+                    </label>
+                    <div className="button-group">
+                      <button
+                        className="primary"
+                        disabled={!!busy || !reviewer.trim()}
+                        onClick={() =>
+                          void act('Draft save', () =>
+                            api.edit(
+                              meetingId,
+                              rev.revision,
+                              draft,
+                              reviewer.trim()
+                            )
+                          )
+                        }
+                      >
+                        Save draft as new revision
+                      </button>
+                      <button
+                        disabled={!!busy}
+                        onClick={() => {
+                          if (window.confirm('Discard these unsaved edits?'))
+                            setEditing(false);
+                        }}
+                      >
+                        Cancel edits
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Claims
+                      title="Executive summary"
+                      items={[content.executive_summary]}
+                    />
+                    {content.topics.map((t, i) => (
+                      <section className="topic" key={i}>
+                        <span className="topic-number">
+                          {String(i + 1).padStart(2, '0')}
+                        </span>
+                        <div>
+                          <h3>{t.topic}</h3>
+                          <Claims items={[t.summary]} />
+                          <Claims
+                            title="Discussion points"
+                            items={t.key_points}
+                          />
+                          <Claims
+                            title="Related decisions"
+                            items={t.decisions}
+                          />
+                          <Claims
+                            title="Open questions"
+                            items={t.unresolved_issues}
+                          />
+                        </div>
+                      </section>
+                    ))}
+                    <Claims
+                      title="Timestamped highlights"
+                      items={content.highlights}
+                    />
+                    <Claims title="Decisions" items={content.decisions} />
+                    <Claims
+                      title="Follow-up items"
+                      items={content.follow_up_items}
+                    />
+                    {rev.status === 'draft' && (
+                      <div className="review-box">
+                        <h3>Review & approve</h3>
+                        <p>
+                          Approval preserves a reviewed snapshot. Source
+                          references support your review; they do not prove
+                          every claim.
+                        </p>
+                        <label>
+                          Reviewer name
+                          <input
+                            value={reviewer}
+                            onChange={(e) => setReviewer(e.target.value)}
+                            maxLength={200}
+                          />
+                        </label>
+                        {rev.verification.requires_human_review && (
+                          <label className="check-label">
+                            <input
+                              type="checkbox"
+                              checked={ack}
+                              onChange={(e) => setAck(e.target.checked)}
+                            />
+                            I reviewed the flagged statements against the source
+                            transcript.
+                          </label>
+                        )}
+                        <button
+                          className="primary"
+                          disabled={
+                            !!busy ||
+                            !reviewer.trim() ||
+                            (rev.verification.requires_human_review && !ack)
+                          }
+                          onClick={() =>
+                            void act('Approval', () =>
+                              api.approve(
+                                meetingId,
+                                rev.revision,
+                                reviewer.trim(),
+                                ack
+                              )
+                            )
+                          }
+                        >
+                          Approve minutes
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="export-bar">
+                  <div>
+                    <h3>A record to take with you</h3>
+                    <label className="check-label">
+                      <input
+                        type="checkbox"
+                        checked={draftExport}
+                        onChange={(e) => setDraftExport(e.target.checked)}
+                      />
+                      Export latest version, including draft
+                    </label>
+                    <small>
+                      Default: latest approved revision, even when a newer draft
+                      exists.
+                    </small>
+                  </div>
+                  <div className="button-group">
+                    {(['pdf', 'xlsx', 'docx'] as const).map((format) => (
+                      <button
+                        key={format}
+                        disabled={!!busy || editing}
+                        onClick={() =>
+                          void act(
+                            format.toUpperCase() + ' download',
+                            () => api.download(meetingId, format, draftExport),
+                            false
+                          )
+                        }
+                      >
+                        <Download size={15} />
+                        {format === 'xlsx' ? 'Excel' : format.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <RevisionHistory meetingId={meetingId} version={rev.revision} />
+              </>
+            ) : (
+              <Empty title="No minutes generated yet">
+                <button
+                  className="primary"
+                  disabled={!!busy}
+                  onClick={() =>
+                    void act('Minutes generation', () =>
+                      api.generate(meetingId)
+                    )
+                  }
+                >
+                  {busy || 'Generate minutes'}
+                </button>
+              </Empty>
+            )}
+          </div>
+        )}
+        {tab === 'tasks' && (
+          <>
+            <p className="section-help">
+              Statuses are saved to Atlas. Enriched owners, deadlines and
+              dependencies can be inferred; original factual records remain
+              unchanged.
+            </p>
+            <TaskTable tasks={allTasks([doc])} onChanged={data.reload} />
+            <details className="document">
+              <summary>Original factual extraction</summary>
+              {doc.tasks?.map((t) => (
+                <div className="claim" key={t.task_id}>
+                  <strong>
+                    {t.task_id}: {t.description}
+                  </strong>
+                  <p>
+                    Explicit owner: {t.explicit_owner || 'Not stated'} ?
+                    Explicit deadline: {t.explicit_deadline || 'Not stated'}
+                  </p>
+                  <p>
+                    Explicit prerequisites:{' '}
+                    {t.explicit_prerequisites?.join(', ') || 'None recorded'}
+                  </p>
+                </div>
+              ))}
+            </details>
+          </>
+        )}
+        {tab === 'dependencies' && (
+          <div className="document">
+            <DependencyGraph graph={doc.graph_analysis} tasks={tasksOf(doc)} />
+          </div>
+        )}
+        {tab === 'transcript' && (
+          <div className="document">
+            <div className="section-title">
+              <h2>Source transcript</h2>
+              <label className="search">
+                <Search size={16} />
+                <input
+                  aria-label="Search transcript"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Find in transcript?"
+                />
+              </label>
+            </div>
+            {segments
+              .filter((s) =>
+                s.text.toLowerCase().includes(search.toLowerCase())
+              )
+              .map((s) => (
+                <article className="transcript-segment" key={s.segment_id}>
+                  <aside>
+                    <span>{s.timestamp || 'No timestamp'}</span>
+                    <small>{s.segment_id}</small>
+                  </aside>
+                  <div>
+                    {s.speaker && <strong>{s.speaker}</strong>}
+                    <p>{s.text}</p>
+                  </div>
+                </article>
+              ))}
+            {!segments.length && <Empty title="No source transcript saved" />}
+          </div>
+        )}
+      </section>
+      {busy && (
+        <div className="operation-status" role="status">
+          <Loading text={busy + ' in progress?'} />
+        </div>
+      )}
+    </>
+  );
 }
-function RevisionHistory({meetingId,version}:{meetingId:string;version:number}){const history=useLoad(()=>api.history(meetingId),[meetingId,version]);return <details className="history"><summary>Revision history</summary>{history.loading?<Loading/>:history.error?<ErrorNotice message={history.error} retry={history.reload}/>:history.value?.map(r=><div className="list-row" key={r.revision}><span>Revision {r.revision} ? {r.reviewer||'Generated draft'}</span><span>{dateLabel(r.created_at)} <Badge>{r.status}</Badge></span></div>)}</details>;}
-function EditClaims({title,items,onChange}:{title:string;items:Claim[];onChange:(items:Claim[])=>void}){return <section className="edit-claims"><h3>{title}</h3>{items.map((c,i)=><div className="edit-claim" key={i}><textarea aria-label={title+' '+(i+1)} required value={c.text} onChange={e=>onChange(items.map((item,j)=>j===i?{...item,text:e.target.value}:item))}/><button aria-label={'Remove '+title+' '+(i+1)} onClick={()=>onChange(items.filter((_,j)=>j!==i))}>Remove</button></div>)}<button onClick={()=>onChange([...items,{text:'',evidence:[],assessment:'ambiguous'}])}>Add {title.toLowerCase()}</button></section>;}
-function MinutesEditor({value,onChange}:{value:Minutes;onChange:(m:Minutes)=>void}){
-  const fields=['key_takeaways','decisions','conclusions','unresolved_issues','follow_up_items','highlights'] as const;
-  return <div className="editor"><p className="notice warning">Edits keep their original references. New claims have no evidence and will be flagged for review.</p><label>Minutes title<input value={value.title} onChange={e=>onChange({...value,title:e.target.value})}/></label><label>Executive summary<textarea rows={4} value={value.executive_summary.text} onChange={e=>onChange({...value,executive_summary:{...value.executive_summary,text:e.target.value}})}/></label>{value.topics.map((t,i)=><section key={i} className="topic-editor"><label>Topic title<input value={t.topic} onChange={e=>onChange({...value,topics:value.topics.map((x,j)=>j===i?{...x,topic:e.target.value}:x)})}/></label><label>Topic summary<textarea value={t.summary.text} onChange={e=>onChange({...value,topics:value.topics.map((x,j)=>j===i?{...x,summary:{...x.summary,text:e.target.value}}:x)})}/></label>{(['key_points','decisions','unresolved_issues']as const).map(field=><EditClaims key={field} title={field.replaceAll('_',' ')} items={t[field]} onChange={items=>onChange({...value,topics:value.topics.map((x,j)=>j===i?{...x,[field]:items}:x)})}/>)}</section>)}{fields.map(field=><EditClaims key={field} title={field.replaceAll('_',' ')} items={value[field]} onChange={items=>onChange({...value,[field]:items})}/>)}</div>;
+function RevisionHistory({
+  meetingId,
+  version,
+}: {
+  meetingId: string;
+  version: number;
+}) {
+  const history = useLoad(() => api.history(meetingId), [meetingId, version]);
+  return (
+    <details className="history">
+      <summary>Revision history</summary>
+      {history.loading ? (
+        <Loading />
+      ) : history.error ? (
+        <ErrorNotice message={history.error} retry={history.reload} />
+      ) : (
+        history.value?.map((r) => (
+          <div className="list-row" key={r.revision}>
+            <span>
+              Revision {r.revision} ? {r.reviewer || 'Generated draft'}
+            </span>
+            <span>
+              {dateLabel(r.created_at)} <Badge>{r.status}</Badge>
+            </span>
+          </div>
+        ))
+      )}
+    </details>
+  );
+}
+function EditClaims({
+  title,
+  items,
+  onChange,
+}: {
+  title: string;
+  items: Claim[];
+  onChange: (items: Claim[]) => void;
+}) {
+  return (
+    <section className="edit-claims">
+      <h3>{title}</h3>
+      {items.map((c, i) => (
+        <div className="edit-claim" key={i}>
+          <textarea
+            aria-label={title + ' ' + (i + 1)}
+            required
+            value={c.text}
+            onChange={(e) =>
+              onChange(
+                items.map((item, j) =>
+                  j === i ? { ...item, text: e.target.value } : item
+                )
+              )
+            }
+          />
+          <button
+            aria-label={'Remove ' + title + ' ' + (i + 1)}
+            onClick={() => onChange(items.filter((_, j) => j !== i))}
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+      <button
+        onClick={() =>
+          onChange([
+            ...items,
+            { text: '', evidence: [], assessment: 'ambiguous' },
+          ])
+        }
+      >
+        Add {title.toLowerCase()}
+      </button>
+    </section>
+  );
+}
+function MinutesEditor({
+  value,
+  onChange,
+}: {
+  value: Minutes;
+  onChange: (m: Minutes) => void;
+}) {
+  const fields = [
+    'key_takeaways',
+    'decisions',
+    'conclusions',
+    'unresolved_issues',
+    'follow_up_items',
+    'highlights',
+  ] as const;
+  return (
+    <div className="editor">
+      <p className="notice warning">
+        Edits keep their original references. New claims have no evidence and
+        will be flagged for review.
+      </p>
+      <label>
+        Minutes title
+        <input
+          value={value.title}
+          onChange={(e) => onChange({ ...value, title: e.target.value })}
+        />
+      </label>
+      <label>
+        Executive summary
+        <textarea
+          rows={4}
+          value={value.executive_summary.text}
+          onChange={(e) =>
+            onChange({
+              ...value,
+              executive_summary: {
+                ...value.executive_summary,
+                text: e.target.value,
+              },
+            })
+          }
+        />
+      </label>
+      {value.topics.map((t, i) => (
+        <section key={i} className="topic-editor">
+          <label>
+            Topic title
+            <input
+              value={t.topic}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  topics: value.topics.map((x, j) =>
+                    j === i ? { ...x, topic: e.target.value } : x
+                  ),
+                })
+              }
+            />
+          </label>
+          <label>
+            Topic summary
+            <textarea
+              value={t.summary.text}
+              onChange={(e) =>
+                onChange({
+                  ...value,
+                  topics: value.topics.map((x, j) =>
+                    j === i
+                      ? {
+                          ...x,
+                          summary: { ...x.summary, text: e.target.value },
+                        }
+                      : x
+                  ),
+                })
+              }
+            />
+          </label>
+          {(['key_points', 'decisions', 'unresolved_issues'] as const).map(
+            (field) => (
+              <EditClaims
+                key={field}
+                title={field.replaceAll('_', ' ')}
+                items={t[field]}
+                onChange={(items) =>
+                  onChange({
+                    ...value,
+                    topics: value.topics.map((x, j) =>
+                      j === i ? { ...x, [field]: items } : x
+                    ),
+                  })
+                }
+              />
+            )
+          )}
+        </section>
+      ))}
+      {fields.map((field) => (
+        <EditClaims
+          key={field}
+          title={field.replaceAll('_', ' ')}
+          items={value[field]}
+          onChange={(items) => onChange({ ...value, [field]: items })}
+        />
+      ))}
+    </div>
+  );
 }

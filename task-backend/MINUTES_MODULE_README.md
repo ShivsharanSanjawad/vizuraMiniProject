@@ -8,7 +8,7 @@ The integrated application setup is documented in [the project README](../README
 - Provider configuration and SDK client are shared across modules.
 - Minutes revisions remain immutable, with compare-and-swap edits/approval and source evidence checks.
 - Monitoring records persist to Atlas across restarts.
-- Existing routes remain under /api/v1/minutes, including history, PDF and DOCX.
+- Existing routes remain under /api/v1/minutes, including history, PDF, DOCX and Excel (.xlsx).
 - MINUTES_ENABLE_VERIFICATION controls the additional LLM review; deterministic source checks always run.
 - Pricing configuration is optional; unknown costs remain null.
 
@@ -82,3 +82,24 @@ Persistent reuse uses the existing generation metadata field; no collection or m
 The offline suite covers schema/API compatibility, review/approval/revision/export behavior, duplicate suppression, saved-revision reuse, explicit regeneration, quota classification, independent RPM/TPM limits, concurrency, jitter/Retry-After, cache isolation/settings invalidation, and source-reference preservation. No paid calls or Atlas state were used. Run from task-backend with the existing root .venv: `python -B -m pytest -q -p no:cacheprovider`.
 
 
+
+
+## Targeted meeting workspace improvements
+
+The existing PDF handler now produces a concise report: saved title/date/time/participants, summary, deduplicated discussion points and decisions, a wrapped action-item table, and available unresolved issues/blockers. Evidence dumps, review internals and empty sections are omitted from the PDF. DOCX remains available with its existing detailed evidence rendering. Export content uses the selected minutes revision plus the selected meeting's current saved task statuses; inferred owners/deadlines are labeled instead of presented as explicit assignments.
+
+Excel was not previously implemented. It now uses the same export handler through the single additional format route below. The workbook has Meeting Details, Minutes and Decisions, and Action Items sheets with headers, wrapped cells and frozen header rows. Untrusted strings are stored as text, not formulas. openpyxl is the added runtime dependency; pypdf is test-only for reopening and checking PDFs. Existing approval defaults remain: latest approved revision unless draft=true is explicitly requested. Filenames are sanitized, format-specific MIME types are returned, and Content-Disposition is exposed through existing CORS for browser downloads.
+
+| Method | Endpoint | Purpose |
+|---|---|---|
+| GET | /api/v1/minutes/{meeting_id}/export/pdf | Concise PDF for the selected meeting; existing path |
+| GET | /api/v1/minutes/{meeting_id}/export/xlsx | Excel workbook for the selected meeting; new format in the existing export family |
+| GET | /api/v1/minutes/{meeting_id}/export/docx | Existing detailed DOCX export |
+| POST | /api/meetings/{meeting_id}/query | Existing assistant path; basic queries now use saved selected-meeting data before any LLM call |
+
+The assistant deterministically answers basic summary, decision, action-item, owner, deadline and unresolved-issue questions from saved minutes, tasks and source excerpts. It prefers an approved minutes revision when one exists, labels inferred details and reports absent information. Less direct questions retain the existing configured-provider fallback, now with saved minutes/task records available as clearly identified evidence. All reads remain scoped to the supplied meeting ID; cross-meeting retrieval is not added. Existing query request/response fields and database schemas are unchanged.
+
+The Meetings screen sorts valid meeting dates/times newest first. Saved minutes metadata can supply a missing meeting date. Undated/invalid-date records follow dated meetings; creation time is used only to order that undated group, with stable ordering otherwise. Search, status filters, links and deletion retain their existing behavior.
+
+
+Targeted workspace update verification: **89 backend tests and 18 frontend tests passed; the TypeScript/Vite production build passed.** Tests reopened generated PDF/XLSX files and verified contents, long task-table wrapping, formula safety, selected-meeting assistant isolation, sorting/filter/navigation behavior and browser download-handler logic. Browser handling used the frontend test environment; a manual live-browser/Atlas workflow was not performed for this update.
