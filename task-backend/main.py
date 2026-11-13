@@ -320,9 +320,13 @@ async def get_meeting(meeting_id: str):
         raise HTTPException(status_code=404, detail="Meeting not found")
     return meeting
 
+if __name__ != "__main__":
+    # Mount the minutes + workspace routers whenever the app is imported (uvicorn main:app, Vercel)
+    import combined_app  # noqa: E402,F401
+
 if __name__ == "__main__":
     import uvicorn
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8000"))
     print(f"Starting uvicorn server on http://{host}:{port}...")
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run("combined_app:app", host=host, port=port, reload=True)

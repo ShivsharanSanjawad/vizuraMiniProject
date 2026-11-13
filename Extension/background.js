@@ -64,6 +64,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message?.type) return;
   switch (message.type) {
     case "meet-caption":
+    case "meet-participants":
     case "meet-captions-ready":
     case "meet-captions-enable-prompt":
       pushToPanel(message);

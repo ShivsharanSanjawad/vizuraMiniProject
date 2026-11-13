@@ -1,5 +1,5 @@
 window.EXTENSION_CONFIG = {
-  processingEndpoint: "http://127.0.0.1:8000/api/meetings/process",
-  transcriptionEndpoint: "http://127.0.0.1:8000/audio/transcribe",
+  processingEndpoint: "https://vizura-backend.vercel.app/api/meetings/process",
+  transcriptionEndpoint: "https://vizura-backend.vercel.app/audio/transcribe",
   processingIntervalMinutes: 5,
 };

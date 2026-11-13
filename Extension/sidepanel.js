@@ -31,6 +31,10 @@ const state = {
   interimText: "",
   // Background port (for Google Meet captions relay)
   bgPort: null,
+  // Auto-detected participants and last processed meeting
+  participants: [],
+  meetingId: null,
+  minutesText: "",
 };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
@@ -83,6 +87,15 @@ function addEntry(text, timestamp) {
   renderTranscript();
 }
 
+// Auto-fill the Participants field with speaker names captured from Meet
+function addParticipant(name) {
+  const n = (name || "").trim();
+  if (!n || /^you$/i.test(n)) return;
+  if (state.participants.some((x) => x.toLowerCase() === n.toLowerCase())) return;
+  state.participants.push(n);
+  $("participantsDetected").textContent = `Participants: ${state.participants.join(", ")}`;
+}
+
 function updateOrAddTurnEntry(turnId, speaker, fullText) {
   const cleaned = (fullText || "").trim();
   if (!cleaned) return;
@@ -110,6 +123,7 @@ function updateOrAddTurnEntry(turnId, speaker, fullText) {
   }
 
   // 3. Brand new speaker turn!
+  addParticipant(speaker);
   state.entries.push({
     turnId: turnId || `turn-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
     speaker: speaker || "",
@@ -241,6 +255,11 @@ function connectToBackground() {
 function handleBackgroundMessage(msg) {
   if (!msg || !msg.type) return;
 
+  if (msg.type === "meet-participants" && Array.isArray(msg.names)) {
+    msg.names.forEach(addParticipant);
+    return;
+  }
+
   if (msg.type === "meet-caption" && state.isRecording && state.mode === MODE.GOOGLE_MEET) {
     updateOrAddTurnEntry(msg.turnId, msg.speaker, msg.text);
     // Restore recording banner if we had a disconnect warning
@@ -266,6 +285,9 @@ function handleBackgroundMessage(msg) {
   }
 
   if (msg.type === "meet-tab-detected") {
+    const t = (msg.title || "").replace(/^Meet\s*[-–]\s*/i, "").replace(/\s*[-–]\s*Google Meet$/i, "").trim();
+    const titleEl = $("meetingTitle");
+    if (t && !/^(meet|google meet)$/i.test(t) && !titleEl.value.trim()) titleEl.value = t;
     if (state.mode === MODE.NONE || state.mode === MODE.GOOGLE_MEET) {
       state.mode = MODE.GOOGLE_MEET;
       setModeButton(MODE.GOOGLE_MEET);
@@ -424,7 +446,7 @@ function meetingPayload() {
   return {
     meeting: {
       title:       $("meetingTitle").value.trim() || "Untitled meeting",
-      participants: $("participants").value.split(",").map((n) => n.trim()).filter(Boolean),
+      participants: state.participants,
       startedAt:   state.startedAt ? new Date(state.startedAt).toISOString() : null,
       endedAt:     new Date().toISOString(),
     },
@@ -556,8 +578,14 @@ processButton.addEventListener("click", async () => {
     processStatus.textContent = `✓ Done! ${data.total_tasks || 0} tasks extracted.`;
     processStatus.className   = "hint success";
     renderResults(data);
+    state.meetingId = data.meeting_id;
+    $("minutesButton").disabled = !state.meetingId;
+    $("minutesStatus").textContent = "";
   } catch (err) {
-    processStatus.textContent = `Failed: ${err.message}`;
+    console.error("[Meeting Minutes] process failed", endpoint, err);
+    processStatus.textContent = err.message === "Failed to fetch"
+      ? `Failed to reach ${endpoint} (network error, CORS block or server timeout). See the side panel console.`
+      : `Failed: ${err.message}`;
     processStatus.className   = "hint error";
   } finally {
     processButton.disabled = false;
@@ -565,10 +593,88 @@ processButton.addEventListener("click", async () => {
   }
 });
 
+// ── Minutes of meeting ────────────────────────────────────────────────────────
+async function minutesBaseUrl() {
+  const settings = await chrome.storage.local.get(["processingEndpoint"]);
+  return new URL(settings.processingEndpoint || PROCESSING_ENDPOINT_DEFAULT).origin;
+}
+
+function claimLi(c) {
+  const flag = c.assessment && c.assessment !== "supported"
+    ? ` <em>(${escapeHtml(c.assessment.replace(/_/g, " "))})</em>` : "";
+  return `<li>${escapeHtml(c.text)}${flag}</li>`;
+}
+
+function claimList(title, claims) {
+  return claims && claims.length
+    ? `<h3>${escapeHtml(title)}</h3><ul>${claims.map(claimLi).join("")}</ul>` : "";
+}
+
+function minutesToText(m) {
+  const list = (t, cs) => (cs && cs.length ? `\n${t}\n${cs.map((c) => `- ${c.text}`).join("\n")}\n` : "");
+  let out = `${m.title}\n\nSummary\n${m.executive_summary.text}\n`;
+  (m.topics || []).forEach((t) => {
+    out += `\n${t.topic}\n${t.summary.text}\n${(t.key_points || []).map((c) => `- ${c.text}`).join("\n")}\n`;
+  });
+  out += list("Key takeaways", m.key_takeaways) + list("Decisions", m.decisions) +
+    list("Conclusions", m.conclusions) + list("Unresolved issues", m.unresolved_issues) +
+    list("Follow-up items", m.follow_up_items) + list("Highlights", m.highlights);
+  return out;
+}
+
+function renderMinutes(rev) {
+  const m = rev.minutes;
+  $("minutesSection").style.display = "block";
+  $("minutesSummary").textContent =
+    `Revision ${rev.revision} • ${rev.status} — review in the web workspace to edit or approve.`;
+  const topics = (m.topics || []).map((t) =>
+    `<h3>${escapeHtml(t.topic)}</h3><p>${escapeHtml(t.summary.text)}</p>` +
+    ((t.key_points || []).length ? `<ul>${t.key_points.map(claimLi).join("")}</ul>` : "")
+  ).join("");
+  $("minutesBody").innerHTML =
+    `<h3>${escapeHtml(m.title)}</h3><p>${escapeHtml(m.executive_summary.text)}</p>` + topics +
+    claimList("Key takeaways", m.key_takeaways) + claimList("Decisions", m.decisions) +
+    claimList("Conclusions", m.conclusions) + claimList("Unresolved issues", m.unresolved_issues) +
+    claimList("Follow-up items", m.follow_up_items) + claimList("Highlights", m.highlights);
+  state.minutesText = minutesToText(m);
+}
+
+$("minutesButton").addEventListener("click", async () => {
+  if (!state.meetingId) return;
+  const btn = $("minutesButton");
+  btn.disabled = true;
+  $("minutesStatus").className = "hint";
+  $("minutesStatus").textContent = "Generating grounded minutes… this can take a few minutes.";
+  try {
+    const base = await minutesBaseUrl();
+    const res = await fetch(`${base}/api/v1/minutes/generate/${encodeURIComponent(state.meetingId)}`, { method: "POST" });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try { const j = await res.json(); detail = (j.detail && (j.detail.message || j.detail.code || j.detail)) || detail; } catch (_) {}
+      throw new Error(typeof detail === "string" ? detail : JSON.stringify(detail));
+    }
+    renderMinutes(await res.json());
+    $("minutesStatus").textContent = "✓ Minutes generated.";
+    $("minutesStatus").className = "hint success";
+  } catch (err) {
+    $("minutesStatus").textContent = `Failed: ${err.message}`;
+    $("minutesStatus").className = "hint error";
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$("clearMinutesButton").addEventListener("click", () => { $("minutesSection").style.display = "none"; });
+$("copyMinutesButton").addEventListener("click", () => {
+  navigator.clipboard.writeText(state.minutesText).catch(() => {});
+});
+
 // ── Misc event listeners ──────────────────────────────────────────────────────
 $("clearButton").addEventListener("click", () => {
   if (state.isRecording) return;
   state.entries = [];
+  state.participants = [];
+  $("participantsDetected").textContent = "Participants: auto-detected from Google Meet";
   renderTranscript();
 });
 
@@ -606,7 +712,8 @@ $("addManualBtn").addEventListener("click", () => {
 // Demo transcript (uses realistic multi-speaker format)
 $("sampleButton").addEventListener("click", () => {
   $("meetingTitle").value  = "Sprint Planning Sync";
-  $("participants").value  = "Alice, Bob, Charlie";
+  state.participants = ["Alice", "Bob", "Charlie"];
+  $("participantsDetected").textContent = `Participants: ${state.participants.join(", ")}`;
   state.entries = [
     { timestamp: "00:05", text: "Alice: Welcome everyone. Bob, please build the API database migration by Wednesday.", source: "demo" },
     { timestamp: "00:22", text: "Bob: Sure, but Charlie has to finish the schema definition first.", source: "demo" },

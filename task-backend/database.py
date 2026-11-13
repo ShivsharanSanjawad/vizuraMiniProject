@@ -10,15 +10,16 @@ class Database:
     db = None
 
     async def connect(self):
-        url = os.getenv("MONGODB_URL")
+        url = (os.getenv("MONGODB_URL") or "").strip().strip("\"'")
         if not url:
             raise RuntimeError("MONGODB_URL is required. Configure Atlas in task-backend/.env.")
         self.client = AsyncIOMotorClient(url, serverSelectionTimeoutMS=5000, connectTimeoutMS=5000, socketTimeoutMS=15000)
         try:
             await self.client.admin.command("ping")
             self.db = self.client[os.getenv("MONGODB_DATABASE", "meeting_db")]
-        except Exception:
+        except Exception as exc:
             self.close()
+            import logging; logging.getLogger("uvicorn.error").error("Atlas connect failed: %s: %.300s", type(exc).__name__, exc)
             raise RuntimeError("Cannot connect to MongoDB Atlas. Check URI, network access list and database user.") from None
 
     def close(self):

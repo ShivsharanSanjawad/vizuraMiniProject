@@ -208,3 +208,7 @@ kbd {
 
 footer { border-top: 1px solid #e3e7ef; padding: 14px 2px 0; }
 footer a { color: #5568d9; font-size: 12px; font-weight: 700; text-decoration: none; }
+
+.minutes-body h3 { font-size: 13px; margin: 10px 0 4px; }
+.minutes-body p, .minutes-body li { font-size: 12px; line-height: 1.5; margin: 2px 0; }
+.minutes-body ul { padding-left: 18px; margin: 4px 0; }

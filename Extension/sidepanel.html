@@ -62,9 +62,7 @@
           <label>Meeting title
             <input id="meetingTitle" type="text" placeholder="e.g. Sprint planning">
           </label>
-          <label>Participants (comma-separated)
-            <input id="participants" type="text" placeholder="Alice, Bob, Charlie">
-          </label>
+          <p id="participantsDetected" class="hint" style="margin:0;align-self:end">Participants: auto-detected from Google Meet</p>
         </div>
       </section>
 
@@ -107,6 +105,23 @@
         </div>
         <button id="processButton" class="primary full-width">Process with Backend</button>
         <p id="processStatus" class="hint" role="status"></p>
+        <button id="minutesButton" class="secondary full-width" style="margin-top:8px" disabled>Generate Minutes of Meeting</button>
+        <p id="minutesStatus" class="hint" role="status"></p>
+      </section>
+
+      <!-- Minutes -->
+      <section id="minutesSection" class="card" style="display: none;">
+        <div class="section-heading">
+          <div>
+            <h2>Minutes of Meeting</h2>
+            <p id="minutesSummary" class="hint"></p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button id="copyMinutesButton" class="text-button">Copy</button>
+            <button id="clearMinutesButton" class="text-button">Dismiss</button>
+          </div>
+        </div>
+        <div id="minutesBody" class="minutes-body"></div>
       </section>
 
       <!-- AI Results -->

@@ -60,6 +60,52 @@
     return "";
   }
 
+  // ── Names: own name + participants (independent of recording) ─────────────
+  const isYou = (n) => /^(you|me)$/i.test((n || "").trim());
+  const okName = (n) => n && n.length >= 2 && n.length <= 40 && !isYou(n) && !/[@\d]{3,}/.test(n);
+
+  function getOwnName() {
+    // 1. Google account button: aria-label="Google Account: Full Name (email)"
+    const acct = document.querySelector("[aria-label^='Google Account' i]");
+    const m = acct && /Google Account:\s*(.+?)\s*(\(|\n|$)/i.exec(acct.getAttribute("aria-label") || "");
+    if (m && okName(m[1].trim())) return m[1].trim();
+    // 2. Own tile label (tile that carries data-self-name; real name is a child text)
+    const selfTile = document.querySelector("[data-self-name]");
+    const root = selfTile && (selfTile.closest("[data-participant-id]") || selfTile.parentElement);
+    if (root) {
+      for (const el of root.querySelectorAll("span, div")) {
+        if (el.children.length) continue;
+        const t = el.textContent.trim();
+        if (okName(t)) return t;
+      }
+    }
+    return "";
+  }
+
+  function collectParticipants() {
+    const names = new Set();
+    const own = getOwnName();
+    if (own) names.add(own);
+    document.querySelectorAll("[data-participant-id]").forEach((tile) => {
+      if (tile.querySelector("[data-self-name]")) return;
+      for (const el of tile.querySelectorAll("span.notranslate, div.notranslate, span, div")) {
+        if (el.children.length) continue;
+        const t = el.textContent.trim();
+        if (okName(t) && /^[\p{L}][\p{L}\s.'-]*$/u.test(t)) { names.add(t); break; }
+      }
+    });
+    return Array.from(names);
+  }
+
+  function sendParticipants() {
+    const names = collectParticipants();
+    if (names.length) {
+      chrome.runtime.sendMessage({ type: "meet-participants", names }).catch(() => {});
+    }
+  }
+  setInterval(sendParticipants, 3000);
+  setTimeout(sendParticipants, 1000);
+
   // ── Main extraction routine ───────────────────────────────────────────────
   function extractCaptions() {
     // 1. Find all active caption text elements in Google Meet
@@ -73,7 +119,21 @@
       );
     }
 
-    if (textContainers.length === 0) return;
+    if (textContainers.length === 0) {
+      // Fallback: Meet's caption region is exposed via ARIA, independent of class names
+      const region = document.querySelector("[role='region'][aria-label*='aption' i], [aria-live='polite'][class*='caption' i]");
+      if (region) {
+        textContainers = Array.from(region.querySelectorAll("div, span")).filter(
+          (el) => !el.children.length && el.textContent.trim().length >= 2 &&
+                  !(el.closest("button") || el.closest("[role='button']"))
+        );
+      }
+    }
+
+    if (textContainers.length === 0) {
+      if (!window.__mmcWarned) { window.__mmcWarned = true; log("No caption elements found - are captions (CC) turned on?"); }
+      return;
+    }
 
     // Filter to elements that actually contain speech text (> 2 chars)
     // and avoid nested duplicates (keep inner leaf)
@@ -115,6 +175,7 @@
       // 3. Extract speaker for this isolated turn row
       let speaker = findSpeakerInRow(turnRow, speechText);
       speaker = (speaker || "You").trim();
+      if (/^you$/i.test(speaker)) speaker = getOwnName() || "You";
 
       // Clean speech text: if it starts with the speaker name, remove duplicate prefix
       let cleanedSpeech = speechText;
