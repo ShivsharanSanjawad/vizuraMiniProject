@@ -2,6 +2,12 @@
 
 An end-to-end meeting intelligence system that captures live transcripts through a Chrome Extension or accepts uploaded and pasted transcripts through a React website. It extracts factual action items, infers contextual task details, analyzes dependencies and blockers, generates evidence-linked meeting minutes, and supports human review, approval, revision history, PDF/Excel/DOCX export, meeting Q&A, and LLM monitoring.
 
+## Live Deployment
+
+- **Web app:** https://vizura-frontend.vercel.app/
+- **Backend API:** https://vizura-backend.vercel.app/ (health check at `/`, Swagger at `/docs`)
+- **Chrome extension:** load the `Extension/` folder as an unpacked extension; it is configured to use the deployed backend by default.
+
 ---
 
 ## Architecture Overview
